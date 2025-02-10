@@ -1,0 +1,3 @@
+data:
+  role:
+    arn: arn:aws:iam::013022175747:role/kinesis-execution-role

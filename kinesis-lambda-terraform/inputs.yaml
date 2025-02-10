@@ -1,0 +1,13 @@
+data:
+  role_and_policys:
+    role_name: "kinesis-execution-role"
+    role_arn: arn:aws:iam::013022175747:role/kinesis-execution-role
+    policy_arn: arn:aws:iam::aws:policy/AmazonKinesisFullAccess
+  private_links:
+    vpc_id: sdsdsdsdsdsd
+    subnet_ids:
+      - qwqwqwqwqwqw
+      - wewewewewwe
+    security_group_ids:
+      - qwqwqwqwqwqw
+      - wewewewewwe
