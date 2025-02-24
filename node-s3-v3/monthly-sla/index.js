@@ -21,31 +21,25 @@ const activeServices = () => [
 ];
 
 // for current month set -1
-function constructKey(days) {
+function constructKey(months) {
   const currentDate = new Date();
-  const previousDate = new Date(currentDate);
-  previousDate.setDate(currentDate.getDate() - days);
-  const month = (previousDate.getMonth() + 1).toString().padStart(2, '0');
-  const year = previousDate.getFullYear().toString();
-  const day = previousDate.getDate().toString().padStart(2, '0');
+  const previousMonth = new Date(currentDate);
+  previousMonth.setMonth(currentDate.getMonth() - months);
+  const month = (previousMonth.getMonth() + 1).toString().padStart(2, '0');
+  const year = previousMonth.getFullYear().toString();
   return {
     year,
     month,
-    day,
   };
 }
 
-function dailyUptimeSLA(data, frequency) {
-  const registeredDataPoints = Object.keys(data).length - 1;
-  const expectedDataPoints = Math.floor(60 / frequency) * 24;
-  const failedDataPoints = Object.values(data).filter((obj) => obj === 0).length;
-  const dailySLA =
-    100 -
-    ((failedDataPoints + (expectedDataPoints - registeredDataPoints)) / expectedDataPoints) * 100;
-  return Number(dailySLA.toFixed(2));
+function monthlyUptimeSLA(data, month, year) {
+  const sumofSLAs = Object.values(data).reduce((acc, value) => acc + value, 0);
+  const numberofDays = new Date(year, month, 0).getDate();
+  return Number((sumofSLAs / numberofDays).toFixed(2));
 }
 
-async function modifyDailySLA(key, jsonData) {
+async function modifyMonthlySLA(key, jsonData) {
   const command = new PutObjectCommand({
     Bucket: 'my-scheduler-sla',
     Key: key,
@@ -65,17 +59,17 @@ const streamToString = (stream) =>
     stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
   });
 
-async function constructDailySLA(jsond) {
-  const jsonData = JSON.stringify({ [jsond.day]: jsond.sla });
-  const fileName = 'dailySLA.json';
-  const key = path.join(jsond.region, jsond.serviceId, jsond.year, jsond.month, fileName);
+async function constructMonthlySLA(jsond) {
+  const jsonData = JSON.stringify({ [jsond.month]: jsond.sla });
+  const fileName = 'monthlySLA.json';
+  const key = path.join(jsond.region, jsond.serviceId, jsond.year, fileName);
   const listParams = { Bucket: bucketName, Key: key };
   try {
     const headCommand = new HeadObjectCommand(listParams);
     await s3Client.send(headCommand);
   } catch (error) {
     if (error.name === 'NotFound') {
-      modifyDailySLA(key, jsonData);
+      modifyMonthlySLA(key, jsonData);
     } else {
       console.error('Error in getting the month json file', error);
     }
@@ -83,10 +77,10 @@ async function constructDailySLA(jsond) {
   const listCommand = new GetObjectCommand(listParams);
   const getResponse = await s3Client.send(listCommand);
   const data = await streamToString(getResponse.Body);
-  const dailySLA = JSON.parse(data);
-  dailySLA.push(jsonData);
-  modifyDailySLA(key, jsonData);
-  return dailySLA;
+  const monthlySLA = JSON.parse(data);
+  monthlySLA.push(jsonData);
+  modifyMonthlySLA(key, jsonData);
+  return monthlySLA;
 }
 
 // Function to get JSON files from S3
@@ -94,8 +88,8 @@ const getJsonFilesFromS3 = async () => {
   try {
     const services = activeServices();
     for (const service of services) {
-      const { year, month, day } = constructKey(0);
-      const Key = `${service.region}/${service.serviceId}/${year}/${month}/${day}/data-points.json`;
+      const { year, month } = constructKey(0);
+      const Key = `${service.region}/${service.serviceId}/${year}/${month}/dailySLA.json`;
       const listParams = { Bucket: bucketName, Key };
       try {
         const headCommand = new HeadObjectCommand(listParams);
@@ -103,17 +97,16 @@ const getJsonFilesFromS3 = async () => {
         const listCommand = new GetObjectCommand(listParams);
         const getResponse = await s3Client.send(listCommand);
         const data = await streamToString(getResponse.Body);
-        const sla = dailyUptimeSLA(JSON.parse(data), service.frequency);
+        const sla = monthlyUptimeSLA(JSON.parse(data), month, year);
         const slaDetails = {
           region: service.region,
           serviceId: String(service.serviceId),
           sla,
-          day: String(day),
           month: String(month),
           year: String(year),
         };
-        await constructDailySLA(slaDetails);
-        console.log('DailySLA created successfully');
+        await constructMonthlySLA(slaDetails);
+        console.log('MonthlySLA created successfully');
       } catch (error) {
         if (error.name === 'NotFound') {
           console.log(`File ${Key} does not exist in bucket ${bucketName}.`);
