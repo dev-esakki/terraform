@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create SSM parameters and a Node.js Lambda function with a custom IAM role
+
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Description: "The name of the Lambda function"
+  LambdaSourcePath:
+    Type: String
+    Description: "The S3 path to the Lambda function code"
+  SSMParameterValues:
+    Type: String
+    Description: "JSON string of SSM parameter values"
+  LambdaExecutionRole:
+    Type: String
+    Description: "The ARN of the IAM role for Lambda execution"
+
+Resources:
+  MyNodeLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "{{ LambdaFunctionName }}"
+      Handler: "index.handler"  # Adjust based on your handler file
+      Role: "{{ LambdaExecutionRole }}"
+      Runtime: nodejs18.x
+      Code:
+        ZipFile: !Sub |
+          ${file(src/index.js)}
+      Timeout: 30
+
+  SSMParameterStore:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: "/myapp/config"
+      Type: "StringList"
+      Value: "{{ ','.join(SSMParameterValues) }}"
+
+Outputs:
+  LambdaFunctionName:
+    Description: "The name of the Node.js Lambda function"
+    Value: !Ref MyNodeLambdaFunction
+
+  SSMParameterName:
+    Description: "The name of the SSM parameter"
+    Value: !Ref SSMParameterStore

@@ -1,0 +1,5 @@
+Parameters:
+  LambdaFunctionName: "MyNodeLambda"
+  LambdaSourcePath: "s3://my-bucket/lambda-code.zip"
+  SSMParameterValues: "{\"value1\": \"hello\", \"value2\": \"world\"}"
+  LambdaExecutionRole: "arn:aws:iam::013022175747:role/kinesis-execution-role"
