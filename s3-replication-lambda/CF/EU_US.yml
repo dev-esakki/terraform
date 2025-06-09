@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 Replication from  Frankfurt to Oregon
+
+Parameters:
+  SourceBucket:
+    Type: String
+    Default: secondary-up-eu
+  DestinationBucket:
+    Type: String
+    Default: primary-up-or
+
+Resources:
+  ReplicationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: S3ReplicationRole-FrankfurtToOregon
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - s3.amazonaws.com
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReplicationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetReplicationConfiguration
+                  - s3:PutReplicationConfiguration
+                  - s3:ListAllMyBuckets
+                  - s3:ListBucket
+                Resource: !Sub arn:aws:s3:::${SourceBucket}
+              - Effect: Allow
+                Action:
+                  - s3:GetObjectVersion
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                Resource: !Sub arn:aws:s3:::${SourceBucket}/*
+              - Effect: Allow
+                Action:
+                  - s3:ReplicateObject
+                  - s3:ReplicateDelete
+                  - s3:ReplicateTags
+                Resource: !Sub arn:aws:s3:::${DestinationBucket}/*
+
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:ListFunctions
+                  - lambda:GetFunction
+                  - lambda:DeleteFunction
+                  - lambda:CreateFunction
+                Resource: "*"
+                
+        - PolicyName: AllowPassReplicationRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: arn:aws:iam::013022175747:role/S3ReplicationRole-*
+
+  SourceBucketS3:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref SourceBucket
+      VersioningConfiguration:
+        Status: Enabled
+
+  # DestinationBucket:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: !Ref DestinationBucket
+  #     VersioningConfiguration:
+  #       Status: Enabled
+
+  MyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: S3ReplicationTrigger
+      Handler: index.handler
+      Role: !GetAtt ReplicationRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            console.log("Event:", JSON.stringify(event));
+            return {
+              statusCode: 200,
+              body: JSON.stringify({ message: "Hello from Node.js Lambda!" })
+            };
+          };
+      Runtime: nodejs18.x
+      Timeout: 30
+
+  # ReplicationConfig:
+  #   Type: AWS::S3::BucketReplicationConfiguration
+  #   Properties:
+  #     Bucket: !Ref SourceBucket
+  #     Role: !GetAtt ReplicationRole.Arn
+  #     Rules:
+  #       - Id: ReplicateToOregon
+  #         Status: Enabled
+  #         Priority: 1
+  #         DeleteMarkerReplication:
+  #           Status: Enabled
+  #         Filter: {}
+  #         Destination:
+  #           Bucket: !Sub "arn:aws:s3:::${DestinationBucket}"
+  #           StorageClass: STANDARD

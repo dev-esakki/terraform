@@ -1,0 +1,7 @@
+{
+  "ResourceProperties": {
+    "SourceBucket": "primary-up-or",
+    "DestinationBucketArn": "arn:aws:s3:::secondary-up-eu",
+    "ReplicationRoleArn": "arn:aws:iam::013022175747:role/S3ReplicationRole-OregonToFrankfurt"
+  }
+}
