@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Setup Lambda and invoke it via AWS Scheduler for S3 replication check
+
+Mappings:
+  RegionMap:
+    us-west-2:
+      SourceBucket: "my-source-bucket-us"
+      DestinationBucketArn: "arn:aws:s3:::my-destination-bucket-eu"
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ReplicationLambdaRoleS3
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReplicationLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetReplicationConfiguration
+                  - s3:PutReplicationConfiguration
+                  - s3:ListAllMyBuckets
+                  - s3:ListBucket
+                Resource: !Sub arn:aws:s3:::my-source-bucket-us
+              - Effect: Allow
+                Action:
+                  - s3:GetObjectVersion
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                Resource: !Sub arn:aws:s3:::my-source-bucket-us/*
+              - Effect: Allow
+                Action:
+                  - s3:ReplicateObject
+                  - s3:ReplicateDelete
+                  - s3:ReplicateTags
+                Resource: !Sub arn:aws:s3:::my-destination-bucket-eu/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:ListFunctions
+                  - lambda:GetFunction
+                  - lambda:DeleteFunction
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: arn:aws:iam::013022175747:role/ReplicationLambdaRoleS3
+
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: arn:aws:lambda:us-west-2:013022175747:function:s3-replication-lambda
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !Sub arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/ReplicationLambdaRoleS3
+
+
+  ReplicationScheduler:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: s3-replication-scheduler
+      ScheduleExpression: 'at(2025-06-30T17:15:00)'  # run once, adjust as needed
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: arn:aws:lambda:us-west-2:013022175747:function:s3-replication-lambda
+        RoleArn: !GetAtt LambdaExecutionRole.Arn
+        Input: !Sub 
+          - |
+            {
+              "ResourceProperties": {
+                "SourceBucket": "${SourceBucket}",
+                "DestinationBucketArn": "${DestinationBucketArn}",
+                "AccountId": "${AWS::AccountId}",
+                "ReplicationRoleArn": "${ReplicationRoleArn}"
+              }
+            }
+          - SourceBucket: !FindInMap ["RegionMap", !Ref "AWS::Region", "SourceBucket"]
+            DestinationBucketArn: !FindInMap ["RegionMap", !Ref "AWS::Region", "DestinationBucketArn"]
+            ReplicationRoleArn: !GetAtt LambdaExecutionRole.Arn
+
